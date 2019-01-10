@@ -700,11 +700,13 @@ class XMLVerifier(XMLSignatureProcessor):
         signature_value = self._find(signature, "SignatureValue")
         signature_alg = signature_method.get("Algorithm")
         raw_signature = b64decode(signature_value.text)
+        print(len(raw_signature))
         x509_data = signature.find("ds:KeyInfo/ds:X509Data", namespaces=namespaces)
         signed_info_c14n = self._c14n(signed_info, algorithm=c14n_algorithm)
 
         if x509_data is not None or self.require_x509:
-            from OpenSSL.crypto import load_certificate, X509, FILETYPE_PEM, verify, Error as OpenSSLCryptoError
+            # from OpenSSL.crypto import load_certificate, X509, FILETYPE_PEM, verify, Error as OpenSSLCryptoError
+            from cryptography.x509 import load_pem_x509_certificate, Certificate
 
             if self.x509_cert is None:
                 if x509_data is None:
@@ -714,24 +716,26 @@ class XMLVerifier(XMLSignatureProcessor):
                     msg = "Expected to find an X509Certificate element in the signature"
                     msg += " (X509SubjectName, X509SKI are not supported)"
                     raise InvalidInput(msg)
-                cert_chain = [load_certificate(FILETYPE_PEM, add_pem_header(cert)) for cert in certs]
+                cert_chain = [load_pem_x509_certificate(add_pem_header(cert).encode(), default_backend()) for cert in certs]
                 signing_cert = verify_x509_cert_chain(cert_chain, ca_pem_file=ca_pem_file, ca_path=ca_path)
-            elif isinstance(self.x509_cert, X509):
+            elif isinstance(self.x509_cert, Certificate):
                 signing_cert = self.x509_cert
             else:
-                signing_cert = load_certificate(FILETYPE_PEM, add_pem_header(self.x509_cert))
+                signing_cert = load_pem_x509_certificate(add_pem_header(self.x509_cert).encode(), default_backend())
 
             if cert_subject_name and signing_cert.get_subject().commonName != cert_subject_name:
                 raise InvalidSignature("Certificate subject common name mismatch")
 
-            signature_digest_method = self._get_signature_digest_method(signature_alg).name
+            signature_digest_method = self._get_signature_digest_method(signature_alg)
             try:
-                verify(signing_cert, raw_signature, signed_info_c14n, signature_digest_method)
-            except OpenSSLCryptoError as e:
-                try:
-                    lib, func, reason = e.args[0][0]
-                except Exception:
-                    reason = e
+                from cryptography.hazmat.primitives.asymmetric import ec, padding
+                signing_cert.public_key().verify(raw_signature, signed_info_c14n, padding.PKCS1v15(), signature_digest_method)
+#            except OpenSSLCryptoError as e:
+#                try:
+#                    lib, func, reason = e.args[0][0]
+#                except Exception:
+#                    reason = e
+            except Exception as e:
                 raise InvalidSignature("Signature verification failed: {}".format(reason))
             # TODO: CN verification goes here
             # TODO: require one of the following to be set: either x509_cert or (ca_pem_file or ca_path) or common_name
