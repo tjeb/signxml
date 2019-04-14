@@ -267,7 +267,7 @@ class XMLSigner(XMLSignatureProcessor):
     :type digest_algorithm: string
     """
     def __init__(self, method=methods.enveloped, signature_algorithm="rsa-sha256", digest_algorithm="sha256",
-                 c14n_algorithm=XMLSignatureProcessor.default_c14n_algorithm):
+                 c14n_algorithm=XMLSignatureProcessor.default_c14n_algorithm, add_c14n_transform=True):
         if method not in methods:
             raise InvalidInput("Unknown signature method {}".format(method))
         self.method = method
@@ -277,6 +277,7 @@ class XMLSigner(XMLSignatureProcessor):
         self.digest_alg = digest_algorithm
         assert c14n_algorithm in self.known_c14n_algorithms
         self.c14n_alg = c14n_algorithm
+        self.add_c14n_alg = add_c14n_transform
         self.namespaces = dict(ds=namespaces.ds)
         self._parser = None
 
@@ -480,7 +481,8 @@ class XMLSigner(XMLSignatureProcessor):
             if self.method == methods.enveloped:
                 transforms = SubElement(reference, ds_tag("Transforms"))
                 SubElement(transforms, ds_tag("Transform"), Algorithm=namespaces.ds + "enveloped-signature")
-                SubElement(transforms, ds_tag("Transform"), Algorithm=self.c14n_alg)
+                if self.add_c14n_alg:
+                    SubElement(transforms, ds_tag("Transform"), Algorithm=self.c14n_alg)
             digest_method = SubElement(reference, ds_tag("DigestMethod"),
                                        Algorithm=self.known_digest_tags[self.digest_alg])
             digest_value = SubElement(reference, ds_tag("DigestValue"))
