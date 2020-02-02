@@ -799,7 +799,12 @@ class XMLVerifier(XMLSignatureProcessor):
             payload = self._resolve_reference(copied_root, reference, uri_resolver=uri_resolver)
             payload_c14n = self._apply_transforms(payload, transforms, copied_signature_ref, c14n_algorithm)
             if digest_value.text != self._get_digest(payload_c14n, self._get_digest_method(digest_algorithm)):
-                raise InvalidDigest("Digest mismatch for reference {}".format(len(verify_results)))
+                # Try a fallback to http://www.w3.org/TR/2001/REC-xml-c14n-20010315
+                fallback_c14n = "http://www.w3.org/TR/2001/REC-xml-c14n-20010315"
+                payload = self._resolve_reference(copied_root, reference, uri_resolver=uri_resolver)
+                payload_c14n = self._apply_transforms(payload, transforms, copied_signature_ref, fallback_c14n)
+                if digest_value.text != self._get_digest(payload_c14n, self._get_digest_method(digest_algorithm)):
+                    raise InvalidDigest("Digest mismatch for reference {} digest_algo {} c14n_algo {} digest in doc: '{}', my digest: '{}'".format(len(verify_results), digest_algorithm, c14n_algorithm, digest_value.text, self._get_digest(payload_c14n, self._get_digest_method(digest_algorithm))))
 
             # We return the signed XML (and only that) to ensure no access to unsigned data happens
             try:
